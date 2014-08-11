@@ -21,6 +21,11 @@ public class BittorrentEncoderTest {
     private BittorrentEncoder encoder = new BittorrentEncoder();
     private BittorrentDecoder decoder = new BittorrentDecoder();
 
+    @Test(expected = IllegalArgumentException.class)
+    public void testEncodeWhenObjIsNull() {
+        encoder.encode(null);
+    }
+
     @Test
     public void testEncodeInteger() {
         byte[] result = encoder.encode(-355);

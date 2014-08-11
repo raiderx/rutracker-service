@@ -3,7 +3,6 @@ package org.karpukhin.bittorrent;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,15 +13,13 @@ import java.util.Map;
  */
 public class BittorrentEncoder {
 
+    static final String UTF8 = "UTF-8";
+
     private EncoderFactory factory = new EncoderFactoryImpl();
 
     public byte[] encode(Object obj) {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
-        try {
-            factory.getEncoder(obj).encode(obj, stream);
-        } catch (IOException e) {
-            e.printStackTrace(System.err);
-        }
+        encode(obj, stream);
         return stream.toByteArray();
     }
 
@@ -32,7 +29,18 @@ public class BittorrentEncoder {
         } catch (IOException e) {
             e.printStackTrace(System.err);
         }
+    }
 
+    static void assertNotNull(Object obj, String message) {
+        if (obj == null) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    static void assertTrue(boolean condition, String message) {
+        if (!condition) {
+            throw new IllegalArgumentException(message);
+        }
     }
 
     interface Encoder {
@@ -60,13 +68,9 @@ public class BittorrentEncoder {
 
         @Override
         public Encoder getEncoder(Object obj) {
-            if (obj == null) {
-                throw new IllegalArgumentException("Parameter 'obj' can not be null");
-            }
+            assertNotNull(obj, "Parameter 'obj' can not be null");
             Encoder encoder = getEncoder(obj.getClass());
-            if (encoder == null) {
-                throw new IllegalArgumentException("Unexpected object type " + obj.getClass());
-            }
+            assertNotNull(encoder, "Unexpected object type " + obj.getClass());
             return encoder;
         }
 
@@ -87,14 +91,11 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            if (obj == null) {
-                throw new IllegalArgumentException("Parameter 'obj' can not be null");
-            }
-            if (!(obj instanceof Integer) && !(obj instanceof Long)) {
-                throw new IllegalArgumentException("Expected 'Integer' or 'Long' but got " + obj.getClass());
-            }
+            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj instanceof Integer || obj instanceof Long, "Expected 'Integer' or 'Long' but got " + obj.getClass());
+
             stream.write('i');
-            stream.write(String.valueOf(obj).getBytes(Charset.forName("UTF-8")));
+            stream.write(String.valueOf(obj).getBytes(UTF8));
             stream.write('e');
         }
     }
@@ -103,17 +104,14 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            if (obj == null) {
-                throw new IllegalArgumentException("Parameter 'obj' can not be null");
-            }
-            if (!(obj instanceof String) && !(obj instanceof byte[])) {
-                throw new IllegalArgumentException("Expected 'String' or 'byte[]' but got " + obj.getClass());
-            }
+            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj instanceof String || obj instanceof byte[], "Expected 'String' or 'byte[]' but got " + obj.getClass());
+
             if (obj instanceof String) {
-                String bytes = (String) obj;
-                stream.write(String.valueOf(bytes.length()).getBytes());
+                String str = (String) obj;
+                stream.write(String.valueOf(str.length()).getBytes());
                 stream.write(':');
-                stream.write(bytes.getBytes(Charset.forName("UTF-8")));
+                stream.write(str.getBytes(UTF8));
             } else {
                 byte[] bytes = (byte[]) obj;
                 stream.write(String.valueOf(bytes.length).getBytes());
@@ -133,12 +131,9 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            if (obj == null) {
-                throw new IllegalArgumentException("Parameter 'obj' can not be null");
-            }
-            if (!(obj instanceof List)) {
-                throw new IllegalArgumentException("Expected 'List' but got " + obj.getClass());
-            }
+            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj instanceof List, "Expected 'List' but got " + obj.getClass());
+
             List list = (List)obj;
             stream.write('l');
             for (Object item : list) {
@@ -158,12 +153,9 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            if (obj == null) {
-                throw new IllegalArgumentException("Parameter 'obj' can not be null");
-            }
-            if (!(obj instanceof Map)) {
-                throw new IllegalArgumentException("Expected 'Map' but got " + obj.getClass());
-            }
+            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj instanceof Map, "Expected 'Map' but got " + obj.getClass());
+
             Map map = (Map)obj;
             stream.write('d');
             for (Object entry : map.entrySet()) {
