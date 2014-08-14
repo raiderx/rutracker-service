@@ -30,9 +30,19 @@ public class RuTrackerServiceImpl implements RuTrackerService {
     static final String CONTENT_TYPE_VALUE = "application/x-www-form-urlencoded";
     static final String USER_AGENT = "User-Agent";
     static final String USER_AGENT_VALUE = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36";
+    static final String ACCEPT = "Accept";
+    //static final String ACCEPT_VALUE = "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2";
+    static final String ACCEPT_VALUE = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8";
+    static final String ACCEPT_ENCODING = "Accept-Encoding";
+    static final String ACCEPT_ENCODING_VALUE = "gzip,deflate,sdch\n";
+    static final String ACCEPT_LANGUAGE = "Accept-Language";
+    static final String ACCEPT_LANGUAGE_VALUE = "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4,ms;q=0.2\n";
+    static final String REFERER = "Referer";
+    static final String REFERER_VALUE = "http://rutracker.org/forum/index.php";
 
     static final String TOPIC_XPATH = "//table[@class=\"forumline forum\"]/tbody/tr[@id]";
     static final String MESSAGE_XPATH = "//table[@class=\"forumline message\"]/tbody/tr/td/div";
+    static final String CAPTCHA_XPATH = "//form[@id=\"login-form\"]/table[@class=\"forumline\"]";
 
     static final String LOGIN_URL = "http://login.rutracker.org/forum/login.php";
     static final String FORUM_URL_FORMAT = "http://rutracker.org/forum/viewforum.php?f=%d";
@@ -64,6 +74,10 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
             connection.setRequestProperty(CONTENT_TYPE, CONTENT_TYPE_VALUE);
+            connection.setRequestProperty(ACCEPT, ACCEPT_VALUE);
+            connection.setRequestProperty(ACCEPT_ENCODING, ACCEPT_ENCODING_VALUE);
+            connection.setRequestProperty(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE);
+            connection.setRequestProperty(REFERER, REFERER_VALUE);
             OutputStream outputStream = connection.getOutputStream();
             outputStream.write(query.getBytes(CP1251));
             outputStream.close();
@@ -73,11 +87,21 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 cookies = connection.getHeaderField("Set-Cookie");
                 return true;
             }
-            //log(connection.getInputStream());
+            TagNode root = cleaner.clean(connection.getInputStream(), CP1251);
+            Object[] tables;
+            try {
+                tables = root.evaluateXPath(CAPTCHA_XPATH);
+            } catch (XPatherException e) {
+                throw new ApplicationException(e.getMessage(), e);
+            }
+            if (tables.length > 0) {
+                throw new ApplicationException("Captcha is required");
+            }
+            System.err.println(root.getText());
+            throw new ApplicationException("Unknown state");
         } catch (IOException e) {
             throw new ApplicationException("Error while reading", e);
         }
-        return false;
     }
 
     @Override
@@ -102,6 +126,10 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             try {
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
+                connection.setRequestProperty(ACCEPT, ACCEPT_VALUE);
+                connection.setRequestProperty(ACCEPT_ENCODING, ACCEPT_ENCODING_VALUE);
+                connection.setRequestProperty(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE);
+                connection.setRequestProperty(REFERER, REFERER_VALUE);
                 InputStream stream = connection.getInputStream();
                 if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
                     System.err.println(connection.getResponseMessage());
@@ -116,8 +144,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             try {
                 divs = root.evaluateXPath(MESSAGE_XPATH);
             } catch (XPatherException e) {
-                e.printStackTrace();
-                continue;
+                throw new ApplicationException(e.getMessage(), e);
             }
             if (divs.length > 0) {
                 if (!(divs[0] instanceof TagNode)) {
@@ -129,8 +156,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             try {
                 trs = root.evaluateXPath(TOPIC_XPATH);
             } catch (XPatherException e) {
-                e.printStackTrace(System.err);
-                continue;
+                throw new ApplicationException(e.getMessage(), e);
             }
             for (Object tr : trs) {
                 if (!(tr instanceof TagNode)) {
@@ -164,10 +190,22 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             connection.setRequestMethod("POST");
             connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
             connection.setRequestProperty(CONTENT_TYPE, CONTENT_TYPE_VALUE);
+            connection.setRequestProperty(ACCEPT, ACCEPT_VALUE);
+            connection.setRequestProperty(ACCEPT_ENCODING, ACCEPT_ENCODING_VALUE);
+            connection.setRequestProperty(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE);
+            connection.setRequestProperty(REFERER, getTopicUrl(topicId));
             if (cookies != null) {
                 connection.setRequestProperty("Cookie", cookies);
             }
             connection.setInstanceFollowRedirects(false);
+
+            connection.connect();
+            if (connection.getResponseCode() == HttpURLConnection.HTTP_MOVED_TEMP) {
+                if (LOGIN_URL.equals(connection.getHeaderField("Location"))) {
+                    throw new ApplicationException("Your are not logged in");
+                }
+                throw new ApplicationException("Redirected to " + connection.getHeaderField("Location"));
+            }
 
             InputStream stream = connection.getInputStream();
             if (connection.getHeaderField(CONTENT_TYPE).contains("application/x-bittorrent")) {
@@ -179,7 +217,20 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 }
                 return out.toByteArray();
             }
-            log(stream);
+            TagNode root = cleaner.clean(stream, CP1251);
+            Object[] divs;
+            try {
+                divs = root.evaluateXPath(MESSAGE_XPATH);
+            } catch (XPatherException e) {
+                throw new ApplicationException(e.getMessage(), e);
+            }
+            if (divs.length > 0) {
+                if (!(divs[0] instanceof TagNode)) {
+                    throw new ApplicationException("Expected TagNode but got " + divs[0].getClass());
+                }
+                throw new IllegalArgumentException(((TagNode)divs[0]).getText().toString());
+            }
+            System.err.println(root.getText());
             throw new ApplicationException("Your are not logged in");
         } catch (IOException e) {
             throw new ApplicationException("Error while reading", e);
