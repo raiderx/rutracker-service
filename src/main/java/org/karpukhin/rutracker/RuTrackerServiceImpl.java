@@ -18,6 +18,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
 
 /**
  * @author Pavel Karpukhin
@@ -34,11 +35,14 @@ public class RuTrackerServiceImpl implements RuTrackerService {
     //static final String ACCEPT_VALUE = "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2";
     static final String ACCEPT_VALUE = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8";
     static final String ACCEPT_ENCODING = "Accept-Encoding";
-    static final String ACCEPT_ENCODING_VALUE = "gzip,deflate,sdch\n";
+    static final String ACCEPT_ENCODING_VALUE = "gzip,deflate,sdch";
     static final String ACCEPT_LANGUAGE = "Accept-Language";
-    static final String ACCEPT_LANGUAGE_VALUE = "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4,ms;q=0.2\n";
+    static final String ACCEPT_LANGUAGE_VALUE = "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4,ms;q=0.2";
     static final String REFERER = "Referer";
     static final String REFERER_VALUE = "http://rutracker.org/forum/index.php";
+
+    static final String LOCATION = "Location";
+    static final String CONTENT_ENCODING = "Content-Encoding";
 
     static final String TOPIC_XPATH = "//table[@class=\"forumline forum\"]/tbody/tr[@id]";
     static final String MESSAGE_XPATH = "//table[@class=\"forumline message\"]/tbody/tr/td/div";
@@ -87,7 +91,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 cookies = connection.getHeaderField("Set-Cookie");
                 return true;
             }
-            TagNode root = cleaner.clean(connection.getInputStream(), CP1251);
+            TagNode root = cleaner.clean(getInputStream(connection), CP1251);
             Object[] tables;
             try {
                 tables = root.evaluateXPath(CAPTCHA_XPATH);
@@ -130,7 +134,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 connection.setRequestProperty(ACCEPT_ENCODING, ACCEPT_ENCODING_VALUE);
                 connection.setRequestProperty(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE);
                 connection.setRequestProperty(REFERER, REFERER_VALUE);
-                InputStream stream = connection.getInputStream();
+                InputStream stream = getInputStream(connection);
                 if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
                     System.err.println(connection.getResponseMessage());
                     log(stream, System.err);
@@ -201,13 +205,13 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
             connection.connect();
             if (connection.getResponseCode() == HttpURLConnection.HTTP_MOVED_TEMP) {
-                if (LOGIN_URL.equals(connection.getHeaderField("Location"))) {
+                if (LOGIN_URL.equals(connection.getHeaderField(LOCATION))) {
                     throw new ApplicationException("Your are not logged in");
                 }
-                throw new ApplicationException("Redirected to " + connection.getHeaderField("Location"));
+                throw new ApplicationException("Redirected to " + connection.getHeaderField(LOCATION));
             }
 
-            InputStream stream = connection.getInputStream();
+            InputStream stream = getInputStream(connection);
             if (connection.getHeaderField(CONTENT_TYPE).contains("application/x-bittorrent")) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 byte[] buffer = new byte[8192];
@@ -218,12 +222,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 return out.toByteArray();
             }
             TagNode root = cleaner.clean(stream, CP1251);
-            Object[] divs;
-            try {
-                divs = root.evaluateXPath(MESSAGE_XPATH);
-            } catch (XPatherException e) {
-                throw new ApplicationException(e.getMessage(), e);
-            }
+            Object[] divs = getTagNodes(root, MESSAGE_XPATH);
             if (divs.length > 0) {
                 if (!(divs[0] instanceof TagNode)) {
                     throw new ApplicationException("Expected TagNode but got " + divs[0].getClass());
@@ -237,20 +236,39 @@ public class RuTrackerServiceImpl implements RuTrackerService {
         }
     }
 
-    String getForumUrl(int forumId) {
+    static String getForumUrl(int forumId) {
         return String.format(FORUM_URL_FORMAT, forumId);
     }
 
-    String getForumUrl(int forumId, int start) {
+    static String getForumUrl(int forumId, int start) {
         return String.format(FORUM_URL_FORMAT_WITH_START, forumId, start);
     }
 
-    String getTopicUrl(int topicId) {
+    static String getTopicUrl(int topicId) {
         return String.format(TOPIC_URL_FORMAT, topicId);
     }
 
-    String getTorrentUrl(int topicId) {
+    static String getTorrentUrl(int topicId) {
         return String.format(TORRENT_URL_FORMAT, topicId);
+    }
+
+    static InputStream getInputStream(HttpURLConnection connection) throws IOException {
+        String contentEncoding = connection.getHeaderField(CONTENT_ENCODING);
+        if (contentEncoding == null) {
+            return connection.getInputStream();
+        }
+        if ("gzip".equals(contentEncoding)) {
+            return new GZIPInputStream(connection.getInputStream());
+        }
+        throw new ApplicationException("Unexpected content encoding: " + contentEncoding);
+    }
+
+    static Object[] getTagNodes(TagNode root, String xPathExpression) {
+        try {
+            return root.evaluateXPath(xPathExpression);
+        } catch (XPatherException e) {
+            throw new ApplicationException(e.getMessage(), e);
+        }
     }
 
     Topic parseLoggedIn(TagNode[] tds) {
