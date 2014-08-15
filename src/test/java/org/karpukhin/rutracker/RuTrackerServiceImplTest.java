@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -31,10 +30,9 @@ public class RuTrackerServiceImplTest {
         service = new RuTrackerServiceImpl();
     }
 
-    @Test
+    @Test(expected = AuthorizationException.class)
     public void testLoginWithWrongCredentials() {
-        boolean result = service.login("abcdef", "123456");
-        assertFalse(result);
+        service.login("abcdef", "123456");
     }
 
     @Test
@@ -55,7 +53,7 @@ public class RuTrackerServiceImplTest {
         assertEquals(70, result.size());
     }
 
-    @Test(expected = ApplicationException.class)
+    @Test(expected = AuthorizationException.class)
     public void testGetTorrentWhenNotLoggedIn() throws IOException {
         service.getTorrent(4770508);
     }

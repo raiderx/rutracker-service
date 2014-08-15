@@ -1,5 +1,7 @@
 package org.karpukhin.rutracker;
 
+import org.htmlcleaner.CleanerProperties;
+import org.htmlcleaner.PrettyHtmlSerializer;
 import org.karpukhin.util.AssertUtils;
 import org.htmlcleaner.HtmlCleaner;
 import org.htmlcleaner.TagNode;
@@ -26,13 +28,15 @@ import java.util.zip.GZIPInputStream;
  */
 public class RuTrackerServiceImpl implements RuTrackerService {
 
+    static final int BUFFER_SIZE = 8192;
+
     static final String CP1251 = "CP1251";
+
     static final String CONTENT_TYPE = "Content-Type";
     static final String CONTENT_TYPE_VALUE = "application/x-www-form-urlencoded";
     static final String USER_AGENT = "User-Agent";
     static final String USER_AGENT_VALUE = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/36.0.1985.125 Safari/537.36";
     static final String ACCEPT = "Accept";
-    //static final String ACCEPT_VALUE = "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2";
     static final String ACCEPT_VALUE = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8";
     static final String ACCEPT_ENCODING = "Accept-Encoding";
     static final String ACCEPT_ENCODING_VALUE = "gzip,deflate,sdch";
@@ -46,7 +50,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
     static final String TOPIC_XPATH = "//table[@class=\"forumline forum\"]/tbody/tr[@id]";
     static final String MESSAGE_XPATH = "//table[@class=\"forumline message\"]/tbody/tr/td/div";
-    static final String CAPTCHA_XPATH = "//form[@id=\"login-form\"]/table[@class=\"forumline\"]";
+    static final String LOGIN_MESSAGE_XPATH = "//form[@id=\"login-form\"]/table[@class=\"forumline\"]/tbody/tr/td/h4";
 
     static final String LOGIN_URL = "http://login.rutracker.org/forum/login.php";
     static final String FORUM_URL_FORMAT = "http://rutracker.org/forum/viewforum.php?f=%d";
@@ -66,14 +70,10 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 .append("login_username=").append(username)
                 .append("&login_password=").append(password)
                 .append("&login=%C2%F5%EE%E4").toString();
-        URL url;
-        try {
-            url = new URL(LOGIN_URL);
-        } catch (MalformedURLException e) {
-            throw new ApplicationException("Bad URL " + LOGIN_URL, e);
-        }
+        URL url = getUrl(LOGIN_URL);
         try {
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setUseCaches(false);
             connection.setDoOutput(true);
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
@@ -92,16 +92,13 @@ public class RuTrackerServiceImpl implements RuTrackerService {
                 return true;
             }
             TagNode root = cleaner.clean(getInputStream(connection), CP1251);
-            Object[] tables;
-            try {
-                tables = root.evaluateXPath(CAPTCHA_XPATH);
-            } catch (XPatherException e) {
-                throw new ApplicationException(e.getMessage(), e);
+
+            Object[] h4s = getTagNodes(root, LOGIN_MESSAGE_XPATH);
+            if (h4s.length > 0) {
+                assertTrue(h4s[0] instanceof TagNode, "Expected TagNode but got " + h4s[0].getClass());
+                throw new AuthorizationException(((TagNode)h4s[0]).getText().toString());
             }
-            if (tables.length > 0) {
-                throw new ApplicationException("Captcha is required");
-            }
-            System.err.println(root.getText());
+            System.err.println(new PrettyHtmlSerializer(new CleanerProperties()).getAsString(root));
             throw new ApplicationException("Unknown state");
         } catch (IOException e) {
             throw new ApplicationException("Error while reading", e);
@@ -121,14 +118,11 @@ public class RuTrackerServiceImpl implements RuTrackerService {
         URL url;
         List<Topic> topics = new ArrayList<>();
         while (topics.size() < maxCount) {
-            try {
-                url = new URL(getForumUrl(forumId, topics.size()));
-            } catch (MalformedURLException e) {
-                throw new ApplicationException("Bad URL " + getForumUrl(forumId, topics.size()), e);
-            }
+            url = getUrl(getForumUrl(forumId, topics.size()));
             TagNode root;
             try {
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                connection.setUseCaches(false);
                 connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
                 connection.setRequestProperty(ACCEPT, ACCEPT_VALUE);
                 connection.setRequestProperty(ACCEPT_ENCODING, ACCEPT_ENCODING_VALUE);
@@ -144,32 +138,19 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             } catch (IOException e) {
                 throw new ApplicationException("Error while reading", e);
             }
-            Object[] divs;
-            try {
-                divs = root.evaluateXPath(MESSAGE_XPATH);
-            } catch (XPatherException e) {
-                throw new ApplicationException(e.getMessage(), e);
-            }
+            Object[] divs = getTagNodes(root, MESSAGE_XPATH);
             if (divs.length > 0) {
-                if (!(divs[0] instanceof TagNode)) {
-                    throw new ApplicationException("Expected TagNode but got " + divs[0].getClass());
-                }
+                assertTrue(divs[0] instanceof TagNode, "Expected TagNode but got " + divs[0].getClass());
                 throw new IllegalArgumentException(((TagNode)divs[0]).getText().toString());
             }
-            Object[] trs;
-            try {
-                trs = root.evaluateXPath(TOPIC_XPATH);
-            } catch (XPatherException e) {
-                throw new ApplicationException(e.getMessage(), e);
-            }
+            Object[] trs = getTagNodes(root, TOPIC_XPATH);
             for (Object tr : trs) {
-                if (!(tr instanceof TagNode)) {
-                    throw new ApplicationException("Expected TagNode but got " + tr.getClass());
-                }
+                assertTrue(tr instanceof TagNode, "Expected TagNode but got " + tr.getClass());
+
                 TagNode[] tds = ((TagNode)tr).getElementsByName("td", false);
-                if (tds.length != 5) {
-                    throw new ApplicationException("'tr' tag element contain less than 5 'td' tags");
-                }
+
+                assertTrue(tds.length == 5, "'tr' tag element contain less than 5 'td' tags");
+
                 Topic topic = isLoggedIn() ? parseLoggedIn(tds) : parseLoggedOff(tds);
                 topics.add(topic);
                 if (topics.size() >= maxCount) {
@@ -182,14 +163,10 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
     @Override
     public byte[] getTorrent(int topicId) {
-        URL url;
-        try {
-            url = new URL(getTorrentUrl(topicId));
-        } catch (MalformedURLException e) {
-            throw new ApplicationException("Bad URL " + getTorrentUrl(topicId), e);
-        }
+        URL url = getUrl(getTorrentUrl(topicId));
         try {
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setUseCaches(false);
             connection.setDoOutput(true);
             connection.setRequestMethod("POST");
             connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
@@ -205,16 +182,18 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
             connection.connect();
             if (connection.getResponseCode() == HttpURLConnection.HTTP_MOVED_TEMP) {
-                if (LOGIN_URL.equals(connection.getHeaderField(LOCATION))) {
-                    throw new ApplicationException("Your are not logged in");
+                String location = connection.getHeaderField(LOCATION);
+                if (location != null && location.startsWith(LOGIN_URL)) {
+                    throw new AuthorizationException("Your are not logged in");
                 }
                 throw new ApplicationException("Redirected to " + connection.getHeaderField(LOCATION));
             }
 
             InputStream stream = getInputStream(connection);
-            if (connection.getHeaderField(CONTENT_TYPE).contains("application/x-bittorrent")) {
+            String contentType = connection.getHeaderField(CONTENT_TYPE);
+            if (contentType != null && contentType.contains("application/x-bittorrent")) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buffer = new byte[8192];
+                byte[] buffer = new byte[BUFFER_SIZE];
                 int res;
                 while ((res = stream.read(buffer)) != -1) {
                     out.write(buffer, 0, res);
@@ -224,12 +203,10 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             TagNode root = cleaner.clean(stream, CP1251);
             Object[] divs = getTagNodes(root, MESSAGE_XPATH);
             if (divs.length > 0) {
-                if (!(divs[0] instanceof TagNode)) {
-                    throw new ApplicationException("Expected TagNode but got " + divs[0].getClass());
-                }
+                assertTrue(divs[0] instanceof TagNode, "Expected TagNode but got " + divs[0].getClass());
                 throw new IllegalArgumentException(((TagNode)divs[0]).getText().toString());
             }
-            System.err.println(root.getText());
+            System.err.println(new PrettyHtmlSerializer(new CleanerProperties()).getAsString(root));
             throw new ApplicationException("Your are not logged in");
         } catch (IOException e) {
             throw new ApplicationException("Error while reading", e);
@@ -250,6 +227,14 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
     static String getTorrentUrl(int topicId) {
         return String.format(TORRENT_URL_FORMAT, topicId);
+    }
+
+    static URL getUrl(String url) {
+        try {
+            return new URL(url);
+        } catch (MalformedURLException e) {
+            throw new ApplicationException("Bad URL " + url, e);
+        }
     }
 
     static InputStream getInputStream(HttpURLConnection connection) throws IOException {
@@ -286,6 +271,12 @@ public class RuTrackerServiceImpl implements RuTrackerService {
         topic.setUrl(a.getAttributeByName("href"));
         topic.setSize(tds[2].getText().toString().trim().replace("&nbsp;", " "));
         return topic;
+    }
+
+    static void assertTrue(boolean condition, String message) {
+        if (!condition) {
+            throw new ApplicationException(message);
+        }
     }
 
     static void log(InputStream in) {
