@@ -44,14 +44,18 @@ public class RuTrackerServiceImpl implements RuTrackerService {
     static final String ACCEPT_LANGUAGE_VALUE = "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4,ms;q=0.2";
     static final String REFERER = "Referer";
     static final String REFERER_VALUE = "http://rutracker.org/forum/index.php";
+    static final String COOKIE = "Cookie";
 
     static final String LOCATION = "Location";
     static final String CONTENT_ENCODING = "Content-Encoding";
+    static final String SET_COOKIE = "Set-Cookie";
 
+    static final String PROFILE_XPATH = "//div[@class=\"topmenu\"]/table/tbody/tr/td";
     static final String TOPIC_XPATH = "//table[@class=\"forumline forum\"]/tbody/tr[@id]";
     static final String MESSAGE_XPATH = "//table[@class=\"forumline message\"]/tbody/tr/td/div";
     static final String LOGIN_MESSAGE_XPATH = "//form[@id=\"login-form\"]/table[@class=\"forumline\"]/tbody/tr/td/h4";
 
+    static final String INDEX_URL = "http://rutracker.org/forum/index.php";
     static final String LOGIN_URL = "http://login.rutracker.org/forum/login.php";
     static final String FORUM_URL_FORMAT = "http://rutracker.org/forum/viewforum.php?f=%d";
     static final String FORUM_URL_FORMAT_WITH_START = "http://rutracker.org/forum/viewforum.php?f=%d&start=%d";
@@ -88,7 +92,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
             connection.connect();
             if (connection.getResponseCode() == HttpURLConnection.HTTP_MOVED_TEMP) {
-                cookies = connection.getHeaderField("Set-Cookie");
+                cookies = connection.getHeaderField(SET_COOKIE);
                 return true;
             }
             TagNode root = cleaner.clean(getInputStream(connection), CP1251);
@@ -107,7 +111,32 @@ public class RuTrackerServiceImpl implements RuTrackerService {
 
     @Override
     public boolean isLoggedIn() {
-        return false;
+        URL url = getUrl(INDEX_URL);
+        TagNode root;
+        try {
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setUseCaches(false);
+            connection.setRequestProperty(USER_AGENT, USER_AGENT_VALUE);
+            connection.setRequestProperty(ACCEPT, ACCEPT_VALUE);
+            connection.setRequestProperty(ACCEPT_ENCODING, ACCEPT_ENCODING_VALUE);
+            connection.setRequestProperty(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE);
+            connection.setRequestProperty(REFERER, REFERER_VALUE);
+            if (cookies != null) {
+                connection.setRequestProperty(COOKIE, cookies);
+            }
+            InputStream stream = getInputStream(connection);
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
+                System.err.println(connection.getResponseMessage());
+                log(stream, System.err);
+                throw new ApplicationException("Unexpected response code " + connection.getResponseCode());
+            }
+            root = cleaner.clean(stream, CP1251);
+        } catch (IOException e) {
+            throw new ApplicationException("Error while reading", e);
+        }
+        Object[] tds = getTagNodes(root, PROFILE_XPATH);
+        assertTrue(tds.length == 1 || tds.length == 3, "Expected 1 or 3 tds but got " + tds.length);
+        return tds.length == 3;
     }
 
     @Override
@@ -176,7 +205,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             connection.setRequestProperty(ACCEPT_LANGUAGE, ACCEPT_LANGUAGE_VALUE);
             connection.setRequestProperty(REFERER, getTopicUrl(topicId));
             if (cookies != null) {
-                connection.setRequestProperty("Cookie", cookies);
+                connection.setRequestProperty(COOKIE, cookies);
             }
             connection.setInstanceFollowRedirects(false);
 
@@ -192,13 +221,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
             InputStream stream = getInputStream(connection);
             String contentType = connection.getHeaderField(CONTENT_TYPE);
             if (contentType != null && contentType.contains("application/x-bittorrent")) {
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buffer = new byte[BUFFER_SIZE];
-                int res;
-                while ((res = stream.read(buffer)) != -1) {
-                    out.write(buffer, 0, res);
-                }
-                return out.toByteArray();
+                return byteArrayFromStream(stream);
             }
             TagNode root = cleaner.clean(stream, CP1251);
             Object[] divs = getTagNodes(root, MESSAGE_XPATH);
@@ -230,6 +253,8 @@ public class RuTrackerServiceImpl implements RuTrackerService {
     }
 
     static URL getUrl(String url) {
+        assertTrue(url != null, "Parameter 'url' is required");
+
         try {
             return new URL(url);
         } catch (MalformedURLException e) {
@@ -249,6 +274,9 @@ public class RuTrackerServiceImpl implements RuTrackerService {
     }
 
     static Object[] getTagNodes(TagNode root, String xPathExpression) {
+        assertTrue(root != null, "Parameter 'root' is required");
+        assertTrue(xPathExpression != null, "Parameter 'xPathExpression' is required");
+
         try {
             return root.evaluateXPath(xPathExpression);
         } catch (XPatherException e) {
@@ -256,14 +284,28 @@ public class RuTrackerServiceImpl implements RuTrackerService {
         }
     }
 
+    static byte[] byteArrayFromStream(InputStream stream) throws IOException {
+        assertTrue(stream != null, "Parameter 'stream' is required");
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buffer = new byte[BUFFER_SIZE];
+        int res;
+        while ((res = stream.read(buffer)) != -1) {
+            out.write(buffer, 0, res);
+        }
+        return out.toByteArray();
+    }
+
     Topic parseLoggedIn(TagNode[] tds) {
-        AssertUtils.assertTrue(tds != null, "Parameter 'tds' is required");
+        assertTrue(tds != null, "Parameter 'tds' is required");
+
         Topic topic = new Topic();
         return topic;
     }
 
     Topic parseLoggedOff(TagNode[] tds) {
-        AssertUtils.assertTrue(tds != null, "Parameter 'tds' is required");
+        assertTrue(tds != null, "Parameter 'tds' is required");
+
         Topic topic = new Topic();
         TagNode a = tds[1].getElementsByName("a", false)[0];
         topic.setId(Integer.valueOf(tds[0].getAttributeByName("id")));
@@ -284,7 +326,8 @@ public class RuTrackerServiceImpl implements RuTrackerService {
     }
 
     static void log(InputStream in, PrintStream out) {
-        AssertUtils.assertTrue(in != null, "Parameter 'stream' is required");
+        assertTrue(in != null, "Parameter 'in' is required");
+        assertTrue(out != null, "Parameter 'out' is required");
 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, CP1251))) {
             String line;

@@ -7,8 +7,11 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Properties;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
+import static org.hamcrest.CoreMatchers.nullValue;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -38,7 +41,21 @@ public class RuTrackerServiceImplTest {
     @Test
     public void testLoginWithCorrectCredentials() throws IOException{
         boolean result = service.login(username, password);
-        assertTrue(result);
+        assertThat(result, is(equalTo(true)));
+    }
+
+    @Test
+    public void testIsLoggedInWhenNotLoggedIn() {
+        boolean result = service.isLoggedIn();
+        assertThat(result, is(equalTo(false)));
+    }
+
+    @Test
+    public void testIsLoggedInWhenLoggedIn() {
+        boolean logged = service.login(username, password);
+        assertThat(logged, is(equalTo(true)));
+        boolean result = service.isLoggedIn();
+        assertThat(result, is(equalTo(true)));
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -49,8 +66,8 @@ public class RuTrackerServiceImplTest {
     @Test
     public void testGetTopics() {
         List<Topic> result = service.getTopics(1737, 70);
-        assertNotNull(result);
-        assertEquals(70, result.size());
+        assertThat(result, is(not(nullValue())));
+        assertThat(result.size(), is(equalTo(70)));
     }
 
     @Test(expected = AuthorizationException.class)
@@ -61,9 +78,9 @@ public class RuTrackerServiceImplTest {
     @Test
     public void testGetTorrent() throws IOException {
         boolean logged = service.login(username, password);
-        assertTrue(logged);
+        assertThat(logged, is(equalTo(true)));
         byte[] result = service.getTorrent(4770508);
-        assertNotNull(result);
+        assertThat(result, is(not(nullValue())));
         assertTrue(result.length > 0);
     }
 }
