@@ -70,10 +70,7 @@ public class RuTrackerServiceImpl implements RuTrackerService {
         AssertUtils.assertTrue(username != null, "Parameter 'username' is required");
         AssertUtils.assertTrue(password != null, "Parameter 'password' is required");
 
-        String query = new StringBuilder()
-                .append("login_username=").append(username)
-                .append("&login_password=").append(password)
-                .append("&login=%C2%F5%EE%E4").toString();
+        String query = "login_username=" + username + "&login_password=" + password + "&login=%C2%F5%EE%E4";
         URL url = getUrl(LOGIN_URL);
         try {
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();

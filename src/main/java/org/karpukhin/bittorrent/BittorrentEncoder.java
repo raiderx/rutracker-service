@@ -18,22 +18,21 @@ public class BittorrentEncoder {
     private EncoderFactory factory = new EncoderFactoryImpl();
 
     public byte[] encode(Object obj) {
+        assertTrue(obj != null, "Parameter 'obj' can not be null");
+
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         encode(obj, stream);
         return stream.toByteArray();
     }
 
     public void encode(Object obj, OutputStream stream) {
+        assertTrue(obj != null, "Parameter 'obj' can not be null");
+        assertTrue(stream != null, "Parameter 'stream' can not be null");
+
         try {
             factory.getEncoder(obj).encode(obj, stream);
         } catch (IOException e) {
             e.printStackTrace(System.err);
-        }
-    }
-
-    static void assertNotNull(Object obj, String message) {
-        if (obj == null) {
-            throw new IllegalArgumentException(message);
         }
     }
 
@@ -68,13 +67,14 @@ public class BittorrentEncoder {
 
         @Override
         public Encoder getEncoder(Object obj) {
-            assertNotNull(obj, "Parameter 'obj' can not be null");
-            Encoder encoder = getEncoder(obj.getClass());
-            assertNotNull(encoder, "Unexpected object type " + obj.getClass());
-            return encoder;
+            assertTrue(obj != null, "Parameter 'obj' can not be null");
+
+            return getEncoder(obj.getClass());
         }
 
         Encoder getEncoder(Class clazz) {
+            assertTrue(clazz != null, "Parameter 'clazz' can not be null");
+
             if (encoders.containsKey(clazz)) {
                 return encoders.get(clazz);
             }
@@ -83,7 +83,10 @@ public class BittorrentEncoder {
                     return encoders.get(clazz2);
                 }
             }
-            return clazz.getSuperclass() != null ? getEncoder(clazz.getSuperclass()) : null;
+            if (clazz.getSuperclass() != null) {
+                return getEncoder(clazz.getSuperclass());
+            }
+            throw new IllegalArgumentException("Unexpected object type " + clazz);
         }
     }
 
@@ -91,7 +94,7 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj != null, "Parameter 'obj' can not be null");
             assertTrue(obj instanceof Integer || obj instanceof Long, "Expected 'Integer' or 'Long' but got " + obj.getClass());
 
             stream.write('i');
@@ -104,7 +107,7 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj != null, "Parameter 'obj' can not be null");
             assertTrue(obj instanceof String || obj instanceof byte[], "Expected 'String' or 'byte[]' but got " + obj.getClass());
 
             if (obj instanceof String) {
@@ -131,7 +134,7 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj != null, "Parameter 'obj' can not be null");
             assertTrue(obj instanceof List, "Expected 'List' but got " + obj.getClass());
 
             List list = (List)obj;
@@ -153,7 +156,7 @@ public class BittorrentEncoder {
 
         @Override
         public void encode(Object obj, OutputStream stream) throws IOException {
-            assertNotNull(obj, "Parameter 'obj' can not be null");
+            assertTrue(obj != null, "Parameter 'obj' can not be null");
             assertTrue(obj instanceof Map, "Expected 'Map' but got " + obj.getClass());
 
             Map map = (Map)obj;

@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * @author Pavel Karpukhin
@@ -22,8 +23,23 @@ public class BittorrentEncoderTest {
     private BittorrentDecoder decoder = new BittorrentDecoder();
 
     @Test(expected = IllegalArgumentException.class)
+    public void testAssertTrueWhenConditionIsFalse() {
+        BittorrentEncoder.assertTrue(false, "message");
+    }
+
+    @Test
+    public void testAssertTrueWhenConditionIsTrue() {
+        BittorrentEncoder.assertTrue(true, "message");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
     public void testEncodeWhenObjIsNull() {
         encoder.encode(null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testEncodeWhenClassIsUnknown() {
+        encoder.encode(true);
     }
 
     @Test
