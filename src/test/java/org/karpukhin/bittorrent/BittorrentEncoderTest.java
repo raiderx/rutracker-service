@@ -10,8 +10,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertTrue;
+import static org.hamcrest.CoreMatchers.is;
+import static org.junit.Assert.assertThat;
 
 /**
  * @author Pavel Karpukhin
@@ -45,31 +45,31 @@ public class BittorrentEncoderTest {
     @Test
     public void testEncodeInteger() {
         byte[] result = encoder.encode(-355);
-        assertArrayEquals("i-355e".getBytes(), result);
+        assertThat(result, is("i-355e".getBytes()));
     }
 
     @Test
     public void testEncodeLong() {
         byte[] result = encoder.encode(-256L);
-        assertArrayEquals("i-256e".getBytes(), result);
+        assertThat(result, is("i-256e".getBytes()));
     }
 
     @Test
     public void testEncodeString() {
         byte[] result = encoder.encode("string");
-        assertArrayEquals("6:string".getBytes(), result);
+        assertThat(result, is("6:string".getBytes()));
     }
 
     @Test
     public void testEncodeBytes() {
         byte[] result = encoder.encode("string".getBytes());
-        assertArrayEquals("6:string".getBytes(), result);
+        assertThat(result, is("6:string".getBytes()));
     }
 
     @Test
     public void testEncodeList() {
         byte[] result = encoder.encode(Arrays.asList(-25L, "string".getBytes()));
-        assertArrayEquals("li-25e6:stringe".getBytes(), result);
+        assertThat(result, is("li-25e6:stringe".getBytes()));
     }
 
     @Test
@@ -77,7 +77,7 @@ public class BittorrentEncoderTest {
         Map map = new HashMap<>();
         map.put(-25L, "string");
         byte[] result = encoder.encode(map);
-        assertArrayEquals("di-25e6:stringe".getBytes(), result);
+        assertThat(result, is("di-25e6:stringe".getBytes()));
     }
 
     @Test
@@ -93,10 +93,8 @@ public class BittorrentEncoderTest {
 
         stream = new ByteArrayInputStream(content);
         Object obj = decoder.parse(stream);
-        out = new ByteArrayOutputStream();
-        encoder.encode(obj, out);
 
-        byte[] result = out.toByteArray();
-        assertArrayEquals(content, result);
+        byte[] result = encoder.encode(obj);
+        assertThat(result, is(content));
     }
 }
